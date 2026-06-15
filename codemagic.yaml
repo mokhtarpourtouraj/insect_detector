@@ -9,11 +9,16 @@ workflows:
         script: |
           flutter create --platforms=android .
           
-      - name: Fix JVM compatibility and Gradle files
+      - name: Fix Gradle conflicts and JVM compatibility
         script: |
-          echo "Fixing JVM compatibility..."
+          echo "🔧 Fixing all Gradle issues..."
           
-          # ویرایش android/build.gradle
+          # حذف فایل build.gradle.kts که با build.gradle تداخل دارد
+          rm -f android/build.gradle.kts
+          rm -f android/app/build.gradle.kts
+          rm -f android/settings.gradle.kts
+          
+          # فایل build.gradle ریشه با تنظیمات subprojects برای یکسان‌سازی JVM در کل پروژه
           cat > android/build.gradle << 'EOF'
           allprojects {
               repositories {
@@ -28,6 +33,23 @@ workflows:
           }
           subprojects {
               project.evaluationDependsOn(':app')
+              
+              // ✅ این بخش حیاتی است: jvmTarget را در تمام sub-projects (شامل tflite_flutter) یکسان می‌کند
+              afterEvaluate { project ->
+                  if (project.plugins.hasPlugin("org.jetbrains.kotlin.android") || project.plugins.hasPlugin("kotlin-android")) {
+                      android {
+                          compileOptions {
+                              sourceCompatibility JavaVersion.VERSION_17
+                              targetCompatibility JavaVersion.VERSION_17
+                          }
+                      }
+                      tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                          kotlinOptions {
+                              jvmTarget = "17"
+                          }
+                      }
+                  }
+              }
           }
 
           tasks.register("clean", Delete) {
@@ -35,7 +57,7 @@ workflows:
           }
           EOF
           
-          # ویرایش android/app/build.gradle با JVM target 17
+          # فایل build.gradle اپ با compileSdk 36
           cat > android/app/build.gradle << 'EOF'
           plugins {
               id "com.android.application"
@@ -56,7 +78,7 @@ workflows:
 
           android {
               namespace "com.example.insect_detector"
-              compileSdk 34
+              compileSdk 36
               ndkVersion flutter.ndkVersion
 
               compileOptions {
@@ -71,7 +93,7 @@ workflows:
               defaultConfig {
                   applicationId "com.example.insect_detector"
                   minSdk 21
-                  targetSdk 34
+                  targetSdk 36
                   versionCode flutterVersionCode.toInteger()
                   versionName flutterVersionName
               }
@@ -88,7 +110,7 @@ workflows:
           }
           EOF
           
-          echo "✅ Gradle files fixed with JVM 17"
+          echo "✅ All Gradle issues fixed (JVM 17 + compileSdk 36 + kts removed)"
           
       - name: Copy AndroidManifest
         script: |
@@ -108,4 +130,4 @@ workflows:
     publishing:
       email:
         recipients:
-          - mokhtarpour.touraj@gmail.com
+          - your-email@example.com
