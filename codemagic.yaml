@@ -18,7 +18,7 @@ workflows:
           rm -f android/app/build.gradle.kts
           rm -f android/settings.gradle.kts
           
-          # Gradle 8.11.1 (سازگار با AGP 8.9.1)
+          # Gradle 8.11.1
           mkdir -p android/gradle/wrapper
           cat > android/gradle/wrapper/gradle-wrapper.properties << 'EOF'
           distributionBase=GRADLE_USER_HOME
@@ -94,7 +94,7 @@ workflows:
           }
           EOF
           
-          # app/build.gradle
+          # app/build.gradle - با minifyEnabled false برای جلوگیری از خطای R8
           cat > android/app/build.gradle << 'EOF'
           plugins {
               id "com.android.application"
@@ -138,6 +138,9 @@ workflows:
               buildTypes {
                   release {
                       signingConfig signingConfigs.debug
+                      // ✅ غیرفعال کردن R8/minification برای جلوگیری از خطای TFLite GPU
+                      minifyEnabled false
+                      shrinkResources false
                   }
               }
           }
@@ -147,7 +150,7 @@ workflows:
           }
           EOF
           
-          echo "✅ Gradle fixed (AGP 8.9.1 + Gradle 8.11.1 + Kotlin 2.0.21)"
+          echo "✅ Gradle fixed (AGP 8.9.1 + R8 disabled)"
           
       - name: Copy AndroidManifest
         script: |
