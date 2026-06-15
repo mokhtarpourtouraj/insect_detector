@@ -9,16 +9,26 @@ workflows:
         script: |
           flutter create --platforms=android .
           
-      - name: Fix all Gradle files for Flutter 3.44 + Gradle 9
+      - name: Fix all Gradle files for Flutter 3.44
         script: |
           echo "🔧 Fixing all Gradle configuration..."
           
-          # حذف فایل‌های .kts که تداخل ایجاد می‌کنند
+          # حذف فایل‌های .kts
           rm -f android/build.gradle.kts
           rm -f android/app/build.gradle.kts
           rm -f android/settings.gradle.kts
           
-          # ساخت فایل settings.gradle با include ":app"
+          # پین کردن نسخه Gradle به 8.14.0
+          mkdir -p android/gradle/wrapper
+          cat > android/gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.0-all.zip
+          EOF
+          
+          # settings.gradle با AGP 8.11.1 و Kotlin 2.2.20
           cat > android/settings.gradle << 'EOF'
           pluginManagement {
               def flutterSdkPath = {
@@ -40,24 +50,14 @@ workflows:
 
           plugins {
               id "dev.flutter.flutter-plugin-loader" version "1.0.0"
-              id "com.android.application" version "8.7.0" apply false
-              id "org.jetbrains.kotlin.android" version "2.0.21" apply false
+              id "com.android.application" version "8.11.1" apply false
+              id "org.jetbrains.kotlin.android" version "2.2.20" apply false
           }
 
           include ":app"
           EOF
           
-          # پین کردن نسخه Gradle به 8.10.2 (سازگار با Flutter 3.44)
-          mkdir -p android/gradle/wrapper
-          cat > android/gradle/wrapper/gradle-wrapper.properties << 'EOF'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.10.2-all.zip
-          EOF
-          
-          # فایل build.gradle ریشه با تنظیمات subprojects برای JVM
+          # build.gradle ریشه - بدون afterEvaluate روی rootProject
           cat > android/build.gradle << 'EOF'
           allprojects {
               repositories {
@@ -69,20 +69,22 @@ workflows:
           rootProject.buildDir = '../build'
           subprojects {
               project.buildDir = "${rootProject.buildDir}/${project.name}"
-              project.evaluationDependsOn(':app')
-              
+          }
+
+          // اعمال JVM 17 فقط روی subprojects (نه rootProject)
+          subprojects {
               afterEvaluate { project ->
-                  if (project.plugins.hasPlugin("org.jetbrains.kotlin.android") || project.plugins.hasPlugin("kotlin-android")) {
+                  if (project.hasProperty('android')) {
                       project.android {
                           compileOptions {
                               sourceCompatibility JavaVersion.VERSION_17
                               targetCompatibility JavaVersion.VERSION_17
                           }
                       }
-                      project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-                          kotlinOptions {
-                              jvmTarget = "17"
-                          }
+                  }
+                  project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                      kotlinOptions {
+                          jvmTarget = "17"
                       }
                   }
               }
@@ -93,7 +95,7 @@ workflows:
           }
           EOF
           
-          # فایل app/build.gradle با compileSdk 36
+          # app/build.gradle با compileSdk 36
           cat > android/app/build.gradle << 'EOF'
           plugins {
               id "com.android.application"
@@ -146,7 +148,7 @@ workflows:
           }
           EOF
           
-          echo "✅ All Gradle files fixed (Gradle 8.10.2 + JVM 17 + compileSdk 36 + settings.gradle with :app)"
+          echo "✅ All Gradle files fixed (Gradle 8.14.0 + AGP 8.11.1 + Kotlin 2.2.20)"
           
       - name: Copy AndroidManifest
         script: |
