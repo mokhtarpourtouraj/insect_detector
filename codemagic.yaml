@@ -9,16 +9,55 @@ workflows:
         script: |
           flutter create --platforms=android .
           
-      - name: Fix Gradle conflicts and JVM compatibility
+      - name: Fix all Gradle files for Flutter 3.44 + Gradle 9
         script: |
-          echo "🔧 Fixing all Gradle issues..."
+          echo "🔧 Fixing all Gradle configuration..."
           
-          # حذف فایل build.gradle.kts که با build.gradle تداخل دارد
+          # حذف فایل‌های .kts که تداخل ایجاد می‌کنند
           rm -f android/build.gradle.kts
           rm -f android/app/build.gradle.kts
           rm -f android/settings.gradle.kts
           
-          # فایل build.gradle ریشه با تنظیمات subprojects برای یکسان‌سازی JVM در کل پروژه
+          # ساخت فایل settings.gradle با include ":app"
+          cat > android/settings.gradle << 'EOF'
+          pluginManagement {
+              def flutterSdkPath = {
+                  def properties = new Properties()
+                  file("local.properties").withInputStream { properties.load(it) }
+                  def flutterSdkPath = properties.getProperty("flutter.sdk")
+                  assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+                  return flutterSdkPath
+              }()
+
+              includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          plugins {
+              id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+              id "com.android.application" version "8.7.0" apply false
+              id "org.jetbrains.kotlin.android" version "2.0.21" apply false
+          }
+
+          include ":app"
+          EOF
+          
+          # پین کردن نسخه Gradle به 8.10.2 (سازگار با Flutter 3.44)
+          mkdir -p android/gradle/wrapper
+          cat > android/gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.10.2-all.zip
+          EOF
+          
+          # فایل build.gradle ریشه با تنظیمات subprojects برای JVM
           cat > android/build.gradle << 'EOF'
           allprojects {
               repositories {
@@ -30,20 +69,17 @@ workflows:
           rootProject.buildDir = '../build'
           subprojects {
               project.buildDir = "${rootProject.buildDir}/${project.name}"
-          }
-          subprojects {
               project.evaluationDependsOn(':app')
               
-              // ✅ این بخش حیاتی است: jvmTarget را در تمام sub-projects (شامل tflite_flutter) یکسان می‌کند
               afterEvaluate { project ->
                   if (project.plugins.hasPlugin("org.jetbrains.kotlin.android") || project.plugins.hasPlugin("kotlin-android")) {
-                      android {
+                      project.android {
                           compileOptions {
                               sourceCompatibility JavaVersion.VERSION_17
                               targetCompatibility JavaVersion.VERSION_17
                           }
                       }
-                      tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                      project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
                           kotlinOptions {
                               jvmTarget = "17"
                           }
@@ -57,7 +93,7 @@ workflows:
           }
           EOF
           
-          # فایل build.gradle اپ با compileSdk 36
+          # فایل app/build.gradle با compileSdk 36
           cat > android/app/build.gradle << 'EOF'
           plugins {
               id "com.android.application"
@@ -110,7 +146,7 @@ workflows:
           }
           EOF
           
-          echo "✅ All Gradle issues fixed (JVM 17 + compileSdk 36 + kts removed)"
+          echo "✅ All Gradle files fixed (Gradle 8.10.2 + JVM 17 + compileSdk 36 + settings.gradle with :app)"
           
       - name: Copy AndroidManifest
         script: |
