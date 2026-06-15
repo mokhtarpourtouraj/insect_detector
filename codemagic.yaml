@@ -1,0 +1,111 @@
+workflows:
+  android-apk-only:
+    name: Android APK Build
+    max_build_duration: 60
+    environment:
+      flutter: stable
+    scripts:
+      - name: Create Android platform
+        script: |
+          flutter create --platforms=android .
+          
+      - name: Fix JVM compatibility and Gradle files
+        script: |
+          echo "Fixing JVM compatibility..."
+          
+          # ویرایش android/build.gradle
+          cat > android/build.gradle << 'EOF'
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.buildDir = '../build'
+          subprojects {
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
+          }
+          subprojects {
+              project.evaluationDependsOn(':app')
+          }
+
+          tasks.register("clean", Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
+          
+          # ویرایش android/app/build.gradle با JVM target 17
+          cat > android/app/build.gradle << 'EOF'
+          plugins {
+              id "com.android.application"
+              id "kotlin-android"
+              id "dev.flutter.flutter-gradle-plugin"
+          }
+
+          def localProperties = new Properties()
+          def localPropertiesFile = rootProject.file('local.properties')
+          if (localPropertiesFile.exists()) {
+              localPropertiesFile.withReader('UTF-8') { reader ->
+                  localProperties.load(reader)
+              }
+          }
+
+          def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '1'
+          def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
+
+          android {
+              namespace "com.example.insect_detector"
+              compileSdk 34
+              ndkVersion flutter.ndkVersion
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = '17'
+              }
+
+              defaultConfig {
+                  applicationId "com.example.insect_detector"
+                  minSdk 21
+                  targetSdk 34
+                  versionCode flutterVersionCode.toInteger()
+                  versionName flutterVersionName
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.debug
+                  }
+              }
+          }
+
+          flutter {
+              source '../..'
+          }
+          EOF
+          
+          echo "✅ Gradle files fixed with JVM 17"
+          
+      - name: Copy AndroidManifest
+        script: |
+          cp custom_android/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+          
+      - name: Build Release APK
+        script: |
+          flutter build apk --release
+          
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
+      
+    publishing:
+      email:
+        recipients:
+          - mokhtarpour.touraj@gmail.com
